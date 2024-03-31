@@ -1,90 +1,89 @@
 'use strict';
+const makeFetch = async (url) => {
+  const result = await fetch(url);
 
-const restaurantEndpoint = 'https://10.120.32.94/restaurant/';
+  return await result.json();
+};
 
-function ajaxGet(url, callback, errorCallback) {
-  const xhr = new XMLHttpRequest();
-  xhr.open('GET', url, true);
-  xhr.onreadystatechange = function () {
-    if (xhr.readyState === XMLHttpRequest.DONE) {
-      if (xhr.status === 200) {
-        const response = JSON.parse(xhr.responseText);
-        callback(response);
-      } else {
-        errorCallback(xhr.statusText);
-      }
-    }
-  };
-  xhr.onerror = function () {
-    errorCallback(xhr.statusText);
-  };
-  xhr.send();
-}
+const fetchRestaurants = async () =>
+  await makeFetch('https://10.120.32.94/restaurant/api/v1/restaurants');
 
-ajaxGet(
-  restaurantEndpoint,
-  function (restaurants) {
-    displayRestaurants(restaurants);
-  },
-  function (error) {
-    console.error('Error fetching restaurants:', error);
-  }
-);
-
-function displayRestaurants(restaurants) {
-  const restaurantsContainer = document.getElementById('restaurants');
-  restaurants.forEach(function (restaurant) {
-    const restaurantElement = document.createElement('div');
-    restaurantElement.className = 'restaurant';
-    restaurantElement.textContent = restaurant.name;
-    restaurantElement.addEventListener('click', function () {
-      fetchAndDisplayMenu(restaurant._id);
-    });
-    restaurantsContainer.appendChild(restaurantElement);
-  });
-}
-
-function fetchAndDisplayMenu(restaurantId) {
-  const menuEndpoint = `https://10.120.32.94/menu?restaurantId=${restaurantId}`;
-  ajaxGet(
-    menuEndpoint,
-    function (menu) {
-      displayMenu(menu);
-    },
-    function (error) {
-      console.error('Error fetching menu:', error);
-    }
+const fetchDailyMenu = async (id) =>
+  makeFetch(
+    `https://10.120.32.94/restaurant/api/v1/restaurants/daily/${id}/fi`
   );
-}
 
-function displayMenu(menu) {
-  const menuContainer = document.getElementById('menu');
-  menuContainer.innerHTML = '';
-  menu.forEach(function (item) {
-    const menuItem = document.createElement('div');
-    menuItem.className = 'menu-item';
-    menuItem.textContent = item.name;
-    menuContainer.appendChild(menuItem);
+const sortRestaurants = (restaurants) => {
+  restaurants.sort((a, b) =>
+    a.name.toLowerCase().trim().localeCompare(b.name.toLowerCase().trim())
+  );
+};
+
+const createPhoneLink = (phone) => {
+  const cleanedNumber = phone.replaceAll(' ', '').replace(/[a-zA-Z-]+/g, '');
+
+  return `<a href="tel:${cleanedNumber}">${cleanedNumber}</a>`;
+};
+
+const createDialog = (restaurant, dialogNode, menu) => {
+  const phone =
+    restaurant.phone !== '-' ? createPhoneLink(restaurant.phone) : '';
+
+  dialogNode.innerHTML = `
+    <h1>${restaurant.name}</h1>
+    <p>${restaurant.address}, ${restaurant.postalCode} ${restaurant.city}</p>
+    <p>${restaurant.company} ${phone}</p>
+
+    <ul>
+    ${menu.courses
+      .map(
+        ({name, price, diets}) =>
+          `<li>${name} - ${price} (${diets.join(', ')})</li>`
+      )
+      .join('')}
+    </ul>
+
+    <form method="dialog">
+      <button>Sulje</button>
+    </form>
+  `;
+
+  dialogNode.showModal();
+};
+
+const handleTableRowClick = async (tr, restaurant, dialogNode) => {
+  document.querySelectorAll('tr').forEach((tr) => {
+    tr.classList.remove('highlight');
   });
-}
 
-const modal = document.getElementById('restaurantModal');
-const span = document.querySelector('.close');
+  tr.classList.add('highlight');
 
-span.addEventListener('click', function () {
-  modal.style.display = 'none';
-});
+  const menu = await fetchDailyMenu(restaurant._id);
+  console.log('menu', menu);
 
-window.addEventListener('click', function (event) {
-  if (event.target == modal) {
-    modal.style.display = 'none';
-  }
-});
+  createDialog(restaurant, dialogNode, menu);
+};
 
-function showModal(restaurant) {
-  const detailsContainer = document.getElementById('restaurantDetails');
-  detailsContainer.innerHTML = '';
-  detailsContainer.innerHTML += '<p>Name: ' + restaurant.name + '</p>';
-  detailsContainer.innerHTML += '<p>Address: ' + restaurant.address + '</p>';
-  modal.style.display = 'block';
-}
+const createTable = (restaurants) => {
+  const tableNode = document.querySelector('table');
+  const dialogNode = document.querySelector('dialog');
+
+  restaurants.forEach((restaurant) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${restaurant.name}</td><td>${restaurant.address}</td>`;
+    tableNode.appendChild(tr);
+
+    tr.addEventListener('click', () => {
+      handleTableRowClick(tr, restaurant, dialogNode);
+    });
+  });
+};
+
+const buildWebsite = async () => {
+  const restaurants = await fetchRestaurants();
+  sortRestaurants(restaurants);
+
+  createTable(restaurants);
+};
+
+buildWebsite();
